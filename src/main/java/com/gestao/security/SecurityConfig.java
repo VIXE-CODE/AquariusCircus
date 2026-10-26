@@ -3,6 +3,7 @@ package com.gestao.security;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -33,17 +34,33 @@ public class SecurityConfig {
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-        http.csrf(csrf -> csrf.disable())
+        return http
+                .csrf(csrf -> csrf.disable())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/auth/**").permitAll()
-                        .requestMatchers("/api/professor/**").hasAuthority("PROFESSOR")
-                        .requestMatchers("/api/aluno/**").hasAuthority("ALUNO")
+                .authorizeHttpRequests(authorize -> authorize
+                        // Rotas públicas de autenticação
+                        .requestMatchers(HttpMethod.POST, "/api/auth/login").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/auth/cadastrar").permitAll()
+
+                        // Rotas do Professor
+                        .requestMatchers("/api/professor/**").hasRole("PROFESSOR")
+
+                        // Rotas do Aluno
+                        .requestMatchers("/api/aluno/**").hasRole("ALUNO")
+
+                        // --- NOVAS REGRAS PARA PLANOS E CONTRATOS ---
+                        // Qualquer pessoa (ou apenas autenticados) pode ver os planos disponíveis
+                        .requestMatchers(HttpMethod.GET, "/api/planos").permitAll()
+                        // Apenas professores podem criar planos
+                        .requestMatchers(HttpMethod.POST, "/api/planos").hasRole("PROFESSOR")
+
+                        // Apenas professores podem gerir/criar contratos
+                        .requestMatchers("/api/contratos/**").hasRole("PROFESSOR")
+
+                        // Qualquer outra rota exige que esteja autenticado
                         .anyRequest().authenticated()
                 )
-                // ADICIONA O FILTRO AQUI ANTES DO FILTRO PADRÃO
-                .addFilterBefore(securityFilter, UsernamePasswordAuthenticationFilter.class);
-
-        return http.build();
+                .addFilterBefore(securityFilter, UsernamePasswordAuthenticationFilter.class)
+                .build();
     }
 }
