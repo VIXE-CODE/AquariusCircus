@@ -31,3 +31,9 @@ build/
 
 ### VS Code ###
 .vscode/
+
+# Configuração local com credenciais (não versionar)
+.env
+.env.*
+!.env.properties.example
+src/main/resources/application-local.properties

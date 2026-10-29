@@ -1,6 +1,8 @@
 package com.gestao.domain;
 
 import jakarta.persistence.*;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import lombok.ToString;
 import lombok.Data;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -23,6 +25,8 @@ public class Usuario implements UserDetails {
 
     @Column(unique = true)
     private String email;
+    @JsonIgnore
+    @ToString.Exclude
     private String senha;
     private String telefone;
 
@@ -44,6 +48,7 @@ public class Usuario implements UserDetails {
     }
 
     @Override
+    @JsonIgnore
     public String getPassword() {
         return this.senha;
     }

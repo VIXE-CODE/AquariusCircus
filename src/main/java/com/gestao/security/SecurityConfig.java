@@ -1,8 +1,8 @@
 package com.gestao.security;
-
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.gestao.dto.ApiError;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.*;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
@@ -13,54 +13,49 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.web.cors.*;
+import java.util.Arrays;
+import java.util.List;
 
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
-
-    // INJEÇÃO DO NOVO FILTRO AQUI
-    @Autowired
-    private SecurityFilter securityFilter;
-
-    @Bean
-    public PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder();
+    @Bean PasswordEncoder passwordEncoder() { return new BCryptPasswordEncoder(); }
+    @Bean AuthenticationManager authenticationManager(AuthenticationConfiguration config) throws Exception {
+        return config.getAuthenticationManager();
     }
-
     @Bean
-    public AuthenticationManager authenticationManager(AuthenticationConfiguration authenticationConfiguration) throws Exception {
-        return authenticationConfiguration.getAuthenticationManager();
+    SecurityFilterChain securityFilterChain(HttpSecurity http, SecurityFilter filter, ObjectMapper mapper) throws Exception {
+        return http.csrf(csrf -> csrf.disable())
+            .cors(cors -> {})
+            .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+            .exceptionHandling(errors -> errors
+                .authenticationEntryPoint((req, res, e) -> {
+                    res.setStatus(401); res.setContentType("application/json"); res.setCharacterEncoding("UTF-8");
+                    mapper.writeValue(res.getWriter(), new ApiError(401, "Autenticação necessária."));
+                })
+                .accessDeniedHandler((req, res, e) -> {
+                    res.setStatus(403); res.setContentType("application/json"); res.setCharacterEncoding("UTF-8");
+                    mapper.writeValue(res.getWriter(), new ApiError(403, "Acesso não permitido para este perfil."));
+                }))
+            .authorizeHttpRequests(auth -> auth
+                .requestMatchers(HttpMethod.POST, "/api/auth/login", "/api/auth/cadastrar").permitAll()
+                .requestMatchers("/api/professor/**").hasAuthority("PROFESSOR")
+                .requestMatchers("/api/aluno/**").hasAuthority("ALUNO")
+                .requestMatchers(HttpMethod.GET, "/api/planos").permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/planos").hasAuthority("PROFESSOR")
+                .requestMatchers("/api/contratos/**").hasAuthority("PROFESSOR")
+                .anyRequest().authenticated())
+            .addFilterBefore(filter, UsernamePasswordAuthenticationFilter.class).build();
     }
-
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-        return http
-                .csrf(csrf -> csrf.disable())
-                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .authorizeHttpRequests(authorize -> authorize
-                        // Rotas públicas de autenticação
-                        .requestMatchers(HttpMethod.POST, "/api/auth/login").permitAll()
-                        .requestMatchers(HttpMethod.POST, "/api/auth/cadastrar").permitAll()
-
-                        // Rotas do Professor
-                        .requestMatchers("/api/professor/**").hasRole("PROFESSOR")
-
-                        // Rotas do Aluno
-                        .requestMatchers("/api/aluno/**").hasRole("ALUNO")
-
-                        // --- NOVAS REGRAS PARA PLANOS E CONTRATOS ---
-                        // Qualquer pessoa (ou apenas autenticados) pode ver os planos disponíveis
-                        .requestMatchers(HttpMethod.GET, "/api/planos").permitAll()
-                        // Apenas professores podem criar planos
-                        .requestMatchers(HttpMethod.POST, "/api/planos").hasRole("PROFESSOR")
-
-                        // Apenas professores podem gerir/criar contratos
-                        .requestMatchers("/api/contratos/**").hasRole("PROFESSOR")
-
-                        // Qualquer outra rota exige que esteja autenticado
-                        .anyRequest().authenticated()
-                )
-                .addFilterBefore(securityFilter, UsernamePasswordAuthenticationFilter.class)
-                .build();
+    CorsConfigurationSource corsConfigurationSource(@Value("${app.cors.allowed-origins}") String origins) {
+        var config = new CorsConfiguration();
+        config.setAllowedOrigins(Arrays.stream(origins.split(",")).map(String::trim).filter(s -> !s.isEmpty()).toList());
+        config.setAllowedMethods(List.of("GET", "POST", "PATCH", "OPTIONS"));
+        config.setAllowedHeaders(List.of("Authorization", "Content-Type"));
+        var source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/api/**", config);
+        return source;
     }
 }

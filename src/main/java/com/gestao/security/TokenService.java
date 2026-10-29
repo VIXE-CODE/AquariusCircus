@@ -1,48 +1,29 @@
 package com.gestao.security;
-
 import com.gestao.domain.Usuario;
-import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.SignatureAlgorithm;
+import io.jsonwebtoken.*;
 import io.jsonwebtoken.security.Keys;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-
+import java.nio.charset.StandardCharsets;
 import java.security.Key;
 import java.util.Date;
 
 @Service
 public class TokenService {
-
-    // Lê a palavra-passe secreta do application.properties
-    @Value("${api.security.token.secret}")
-    private String secret;
-
-    private Key getSigningKey() {
-        return Keys.hmacShaKeyFor(secret.getBytes());
+    public static final long EXPIRACAO_SEGUNDOS = 86400;
+    private final Key signingKey;
+    public TokenService(@Value("${api.security.token.secret}") String secret) {
+        this.signingKey = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
     }
-
-    // Método que gera a "pulseira VIP" para o utilizador
     public String gerarToken(Usuario usuario) {
-        return Jwts.builder()
-                .setIssuer("AgendoFit API")
-                .setSubject(usuario.getEmail())
-                .claim("role", usuario.getRole().name()) // Guarda se é ALUNO ou PROFESSOR
-                .setExpiration(new Date(System.currentTimeMillis() + 86400000)) // Válido por 24 horas
-                .signWith(getSigningKey(), SignatureAlgorithm.HS256)
-                .compact();
+        return Jwts.builder().setIssuer("Aquarius Circus API")
+            .setSubject(usuario.getEmail()).claim("role", usuario.getRole().name())
+            .setIssuedAt(new Date())
+            .setExpiration(new Date(System.currentTimeMillis() + EXPIRACAO_SEGUNDOS * 1000))
+            .signWith(signingKey, SignatureAlgorithm.HS256).compact();
     }
-
-    // Método que lê o token e devolve o email do utilizador que está lá dentro
     public String validarTokenPegandoEmail(String token) {
-        try {
-            return Jwts.parserBuilder()
-                    .setSigningKey(getSigningKey())
-                    .build()
-                    .parseClaimsJws(token)
-                    .getBody()
-                    .getSubject();
-        } catch (Exception e) {
-            throw new RuntimeException("Token JWT inválido ou expirado!");
-        }
+        return Jwts.parserBuilder().setSigningKey(signingKey).requireIssuer("Aquarius Circus API")
+            .build().parseClaimsJws(token).getBody().getSubject();
     }
 }

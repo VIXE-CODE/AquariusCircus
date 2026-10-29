@@ -1,13 +1,7 @@
 package com.gestao;
-
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
-
+import org.springframework.test.context.ActiveProfiles;
 @SpringBootTest
-class GestaoAlunosApplicationTests {
-
-    @Test
-    void contextLoads() {
-    }
-
-}
+@ActiveProfiles("test")
+class GestaoAlunosApplicationTests { @Test void contextLoads() {} }

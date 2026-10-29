@@ -16,7 +16,7 @@ public class AutenticacaoService implements UserDetailsService {
     @Override
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
         // Busca o utilizador no PostgreSQL pelo e-mail
-        return repository.findByEmail(username)
+        return repository.findByEmailIgnoreCase(username)
                 .orElseThrow(() -> new UsernameNotFoundException("Utilizador não encontrado com o e-mail: " + username));
     }
 }

@@ -1,4 +1,3 @@
 package com.gestao.dto;
-
-public record LoginDTO(String email, String senha) {
-}
+import jakarta.validation.constraints.*;
+public record LoginDTO(@NotBlank @Email String email, @NotBlank String senha) {}

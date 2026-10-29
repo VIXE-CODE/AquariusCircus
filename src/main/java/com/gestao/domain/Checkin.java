@@ -7,7 +7,7 @@ import java.util.UUID;
 
 @Entity
 @Data
-@Table(name = "checkins")
+@Table(name = "checkins", uniqueConstraints = @UniqueConstraint(name = "uk_checkin_aluno_aula", columnNames = {"aluno_id", "aula_id"}))
 public class Checkin {
 
     @Id
@@ -15,15 +15,16 @@ public class Checkin {
     private UUID id;
 
     @ManyToOne
-    @JoinColumn(name = "aluno_id")
+    @JoinColumn(name = "aluno_id", nullable = false)
     private Usuario aluno;
 
     @ManyToOne
-    @JoinColumn(name = "aula_id")
+    @JoinColumn(name = "aula_id", nullable = false)
     private Aula aula;
 
     private LocalDateTime dataHoraAgendamento;
 
-    // Status possíveis: AGENDADO, PRESENTE, FALTA, CANCELADO
+    // Estados: CONFIRMADO, PRESENTE, FALTA, CANCELADO
+    @Column(nullable = false)
     private String status;
 }
