@@ -1,19 +1,14 @@
 package com.gestao.repository;
-
-import com.gestao.domain.Aula;
-import com.gestao.domain.Checkin;
-import com.gestao.domain.Usuario;
+import com.gestao.domain.*;
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.stereotype.Repository;
-
-import java.util.UUID;
-
-@Repository
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import java.util.*;
 public interface CheckinRepository extends JpaRepository<Checkin, UUID> {
-
-    // Conta quantos check-ins já existem para uma aula específica
-    long countByAula(Aula aula);
-
-    // Verifica se este aluno já fez check-in nesta aula
-    boolean existsByAlunoAndAula(Usuario aluno, Aula aula);
+    long countByAulaAndStatusNot(Aula aula, String status);
+    Optional<Checkin> findByAlunoAndAula(Usuario aluno, Aula aula);
+    List<Checkin> findByAlunoOrderByDataHoraAgendamentoDesc(Usuario aluno);
+    Optional<Checkin> findByIdAndAluno(UUID id, Usuario aluno);
+    @Query("select c.aula.id from Checkin c where c.id = :id and c.aluno = :aluno")
+    Optional<UUID> findAulaIdDaReserva(@Param("id") UUID id, @Param("aluno") Usuario aluno);
 }

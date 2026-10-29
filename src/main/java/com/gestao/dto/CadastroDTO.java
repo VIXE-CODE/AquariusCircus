@@ -1,8 +1,6 @@
 package com.gestao.dto;
-
 import com.gestao.domain.Role;
-
-// Para o cadastro inicial, pedimos apenas o básico.
-// A ficha técnica do aluno pode ser preenchida depois pelo professor.
-public record CadastroDTO(String nome, String email, String senha, Role role) {
-}
+import jakarta.validation.constraints.*;
+public record CadastroDTO(@NotBlank @Size(max=120) String nome,
+                          @NotBlank @Email @Size(max=254) String email,
+                          @NotBlank @Size(min=8, max=72) String senha, Role role) {}

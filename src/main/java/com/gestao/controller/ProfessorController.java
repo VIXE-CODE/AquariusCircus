@@ -1,54 +1,23 @@
 package com.gestao.controller;
-
-import com.gestao.domain.Aula;
 import com.gestao.domain.Usuario;
-import com.gestao.dto.AulaRequestDTO;
-import com.gestao.repository.AulaRepository;
-import org.springframework.beans.factory.annotation.Autowired;
+import com.gestao.dto.*;
+import com.gestao.service.AgendaService;
+import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.List; // <-- IMPORT ADICIONADO AQUI
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/professor")
 public class ProfessorController {
-
-    @Autowired
-    private AulaRepository aulaRepository;
-
+    private final AgendaService agenda;
+    public ProfessorController(AgendaService agenda) { this.agenda=agenda; }
     @PostMapping("/aulas")
-    public ResponseEntity<String> criarAula(@RequestBody AulaRequestDTO data) {
-
-        // 1. Vai buscar o utilizador (Professor) que está autenticado neste momento pelo Token JWT
-        Usuario professorLogado = (Usuario) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-
-        // 2. Cria a entidade Aula e preenche com os dados
-        Aula novaAula = new Aula();
-        novaAula.setTitulo(data.titulo());
-        novaAula.setDataHora(data.dataHora());
-        novaAula.setLimiteAlunos(data.limiteAlunos());
-
-        // 3. Associa a aula ao professor que fez o login
-        novaAula.setProfessor(professorLogado);
-
-        // 4. Guarda na base de dados (PostgreSQL)
-        aulaRepository.save(novaAula);
-
-        return ResponseEntity.status(201).body("Aula '" + data.titulo() + "' criada com sucesso!");
+    public ResponseEntity<AulaResponseDTO> criar(@AuthenticationPrincipal Usuario professor,
+                                               @Valid @RequestBody AulaRequestDTO data) {
+        return ResponseEntity.status(201).body(agenda.criar(professor, data));
     }
-
     @GetMapping("/aulas")
-    public ResponseEntity<List<Aula>> listarMinhasAulas() {
-
-        // 1. Descobre quem é o professor logado através do Token JWT
-        Usuario professorLogado = (Usuario) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-
-        // 2. Vai à base de dados buscar apenas as aulas deste professor
-        List<Aula> minhasAulas = aulaRepository.findByProfessor(professorLogado);
-
-        // 3. Devolve a lista em formato JSON
-        return ResponseEntity.ok(minhasAulas);
-    }
+    public List<AulaResponseDTO> minhas(@AuthenticationPrincipal Usuario professor) { return agenda.doProfessor(professor); }
 }
