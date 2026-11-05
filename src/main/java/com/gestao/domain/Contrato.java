@@ -2,6 +2,7 @@ package com.gestao.domain;
 
 import jakarta.persistence.*;
 import lombok.Data;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.UUID;
 
@@ -22,7 +23,15 @@ public class Contrato {
     @JoinColumn(name = "plano_id")
     private Plano plano;
 
-    private Double valorAcordado; // Valor que o professor estipulou para este aluno
+    @ManyToOne
+    @JoinColumn(name = "professor_id")
+    private Usuario professor;
+
+    @Column(precision = 10, scale = 2)
+    private BigDecimal valorAcordado;
+    // Condições copiadas na contratação, independentes de futuras edições do plano.
+    private Integer aulasContratadas;
+    private Integer duracaoMeses;
     private LocalDate dataInicio;
     private LocalDate dataVencimento;
 

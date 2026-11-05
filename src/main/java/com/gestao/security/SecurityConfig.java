@@ -39,7 +39,8 @@ public class SecurityConfig {
                     mapper.writeValue(res.getWriter(), new ApiError(403, "Acesso não permitido para este perfil."));
                 }))
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers(HttpMethod.POST, "/api/auth/login", "/api/auth/cadastrar").permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/auth/login", "/api/auth/cadastrar",
+                    "/api/auth/recuperar-senha", "/api/auth/redefinir-senha").permitAll()
                 .requestMatchers("/api/professor/**").hasAuthority("PROFESSOR")
                 .requestMatchers("/api/aluno/**").hasAuthority("ALUNO")
                 .requestMatchers(HttpMethod.GET, "/api/planos").permitAll()

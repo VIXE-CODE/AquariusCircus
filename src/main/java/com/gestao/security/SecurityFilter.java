@@ -25,15 +25,18 @@ public class SecurityFilter extends OncePerRequestFilter {
         String header = req.getHeader("Authorization");
         if (header != null) {
             String email;
+            int senhaVersao;
             try {
                 if (!header.startsWith("Bearer ")) throw new IllegalArgumentException();
-                email = tokens.validarTokenPegandoEmail(header.substring(7));
+                var validado=tokens.validarToken(header.substring(7));
+                email=validado.email(); senhaVersao=validado.senhaVersao();
                 if (email == null || email.isBlank()) throw new IllegalArgumentException();
             } catch (JwtException | IllegalArgumentException e) {
                 unauthorized(res); return;
             }
             var usuario = usuarios.findByEmail(email).orElse(null);
-            if (usuario == null || !usuario.isEnabled() || !usuario.isAccountNonLocked()) {
+            if (usuario == null || !usuario.isEnabled() || !usuario.isAccountNonLocked()
+                    || (usuario.getSenhaVersao() == null ? 0 : usuario.getSenhaVersao()) != senhaVersao) {
                 unauthorized(res); return;
             }
             var auth = new UsernamePasswordAuthenticationToken(usuario, null, usuario.getAuthorities());

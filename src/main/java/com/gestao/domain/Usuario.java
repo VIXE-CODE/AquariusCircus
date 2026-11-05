@@ -28,6 +28,9 @@ public class Usuario implements UserDetails {
     @JsonIgnore
     @ToString.Exclude
     private String senha;
+    @JsonIgnore
+    @Column(nullable = false, columnDefinition = "integer default 0")
+    private Integer senhaVersao = 0;
     private String telefone;
 
     // Ficha técnica (Específico para Alunos)

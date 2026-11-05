@@ -3,6 +3,10 @@ package com.gestao;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.gestao.domain.*;
 import com.gestao.dto.CheckinResponseDTO;
+import com.gestao.dto.*;
+import com.gestao.service.PlanoFinanceiroService;
+import java.math.BigDecimal;
+import java.time.LocalDate;
 import com.gestao.repository.*;
 import com.gestao.security.TokenService;
 import com.gestao.service.AgendaService;
@@ -40,18 +44,32 @@ class AquariusApiTests {
     @Autowired PasswordEncoder encoder;
     @Autowired TokenService tokens;
     @Autowired AgendaService agenda;
+    @Autowired PlanoFinanceiroService financeiro;
+    @Autowired PagamentoRepository pagamentos;
+    @Autowired ContratoRepository contratos;
+    @Autowired PlanoRepository planos;
+    @Autowired ConfiguracaoEstudioRepository configuracoes;
+    @Autowired RecuperacaoSenhaRepository recuperacoes;
     Usuario professor, aluno, outroAluno;
     Aula aula;
 
     @BeforeEach
     void setup() {
-        checkins.deleteAll(); aulas.deleteAll(); usuarios.deleteAll();
+        recuperacoes.deleteAll();
+        checkins.deleteAll(); pagamentos.deleteAll(); contratos.deleteAll(); planos.deleteAll();
+        aulas.deleteAll(); usuarios.deleteAll(); configuracoes.deleteAll();
         professor=usuario("professor@teste.com", Role.PROFESSOR);
         aluno=usuario("aluno@teste.com", Role.ALUNO);
         outroAluno=usuario("outro@teste.com", Role.ALUNO);
+        ativarPlano(aluno); ativarPlano(outroAluno);
         aula=new Aula(); aula.setTitulo("Acrobacia"); aula.setProfessor(professor);
-        aula.setDataHora(LocalDateTime.now().plusDays(2)); aula.setLimiteAlunos(1);
+        aula.setDataHora(LocalDateTime.now().plusDays(2)); aula.setLimiteAlunos(8);
         aula=aulas.saveAndFlush(aula);
+    }
+    private void ativarPlano(Usuario aluno) {
+        var plano=financeiro.criarPlano(new PlanoRequestDTO("Mensal",4,1,new BigDecimal("100.00")));
+        var contrato=financeiro.contratar(professor,new ContratoRequestDTO(aluno.getId(),plano.id(),null));
+        financeiro.primeiroPagamento(professor,contrato.id(),new PagamentoRequestDTO(LocalDate.now()));
     }
 
     private Usuario usuario(String email, Role role) {
@@ -103,7 +121,7 @@ class AquariusApiTests {
     }
     @Test void alunoAcessaAgendaSemDadosPessoaisDoProfessor() throws Exception {
         mvc.perform(get("/api/aluno/aulas").header("Authorization",bearer(aluno)))
-            .andExpect(status().isOk()).andExpect(jsonPath("$[0].vagasDisponiveis").value(1))
+            .andExpect(status().isOk()).andExpect(jsonPath("$[0].vagasDisponiveis").value(8))
             .andExpect(jsonPath("$[0].professorNome").exists()).andExpect(jsonPath("$[0].professor").doesNotExist());
         String json=mapper.writeValueAsString(professor);
         assertThat(json).doesNotContain("\"senha\"", "\"password\"", professor.getSenha());
@@ -180,11 +198,16 @@ class AquariusApiTests {
             .andExpect(status().isOk()).andExpect(header().string("Access-Control-Allow-Origin","http://localhost:5173"));
     }
     @Test void duasReservasConcorrentesNaoUltrapassamUltimaVaga() throws Exception {
+        for(int i=0;i<7;i++) {
+            var c=new Checkin(); c.setAluno(usuario("ocupante"+i+"@teste.com",Role.ALUNO));
+            c.setAula(aula); c.setStatus("CONFIRMADO"); c.setDataHoraAgendamento(LocalDateTime.now());
+            checkins.saveAndFlush(c);
+        }
         concorrentes(aluno,outroAluno);
-        assertThat(checkins.countByAulaAndStatusNot(aula,"CANCELADO")).isEqualTo(1);
+        assertThat(checkins.countByAulaAndStatusIn(aula,List.of("CONFIRMADO","PRESENTE"))).isEqualTo(8);
     }
     @Test void mesmoAlunoConcorrenteNaoDuplicaReserva() throws Exception {
-        aula.setLimiteAlunos(10); aulas.saveAndFlush(aula);
+        aula.setLimiteAlunos(8); aulas.saveAndFlush(aula);
         concorrentes(aluno,aluno);
         assertThat(checkins.count()).isEqualTo(1);
     }

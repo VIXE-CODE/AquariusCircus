@@ -24,4 +24,10 @@ public class Aula {
     @ManyToOne
     @JoinColumn(name = "professor_id")
     private Usuario professor;
+
+    @Column(nullable = false, columnDefinition = "boolean default false")
+    private Boolean cancelada = false;
+    private LocalDateTime dataHoraCancelamento;
+    @Column(length = 500)
+    private String motivoCancelamento;
 }
