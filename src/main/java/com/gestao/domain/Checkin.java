@@ -22,6 +22,10 @@ public class Checkin {
     @JoinColumn(name = "aula_id", nullable = false)
     private Aula aula;
 
+    @ManyToOne
+    @JoinColumn(name = "contrato_id")
+    private Contrato contrato;
+
     private LocalDateTime dataHoraAgendamento;
 
     // Estados: CONFIRMADO, PRESENTE, FALTA, CANCELADO

@@ -1,0 +1,6175 @@
+{
+  "info": {
+    "name": "Aquarius Circus — PostgreSQL isolado",
+    "description": "Testes de integração com dados fictícios. Execute em ordem, com uma iteração e no banco isolado preparado por Executar-Testes.ps1. Inclui requisições concorrentes. Não usar na API real da porta 8080. Datas no fuso UTC-03:00 (America/Sao_Paulo).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "tokenInvalido",
+      "value": "token-invalido-para-teste"
+    },
+    {
+      "key": "runId",
+      "value": ""
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "const base=pm.environment.get('baseUrl')||'';",
+          "if(pm.environment.get('autorizarBancoDeTeste')!=='SIM' || !new RegExp('^http://(127[.]0[.]0[.]1|localhost):[0-9]+$').test(base) || /:8080$/.test(base)) {",
+          "    pm.execution.skipRequest();",
+          "    throw new Error('Use somente a API do banco isolado de testes, em outra porta; 8080 é bloqueada.');",
+          "}",
+          "if(pm.info.requestName==='Sem token: acesso negado' || !pm.collectionVariables.get('runId')) {",
+          "    const agora=new Date();",
+          "    const local=d=>new Date(d.getTime()-3*3600000).toISOString().slice(0,19);",
+          "    const dia=d=>local(d).slice(0,10);",
+          "    const mesesAtras=n=>{",
+          "        const partes=dia(agora).split('-').map(Number);",
+          "        const d=new Date(Date.UTC(partes[0],partes[1]-1-n,1));",
+          "        d.setUTCDate(Math.min(partes[2],new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth()+1,0)).getUTCDate()));",
+          "        return d.toISOString().slice(0,10);",
+          "    };",
+          "    pm.collectionVariables.set('runId','aqtest_'+agora.getTime());",
+          "    pm.collectionVariables.set('hoje',dia(agora));",
+          "    pm.collectionVariables.set('umMesAtras',mesesAtras(1));",
+          "    pm.collectionVariables.set('doisMesesAtras',mesesAtras(2));",
+          "    for(const [nome,horas] of Object.entries({aulaFutura:72,aulaUmaHora:1,aulaQuatroDias:96,aulaCincoDias:120,aulaSeisDias:144,aulaSeteDias:168,aulaQuarentaDias:960}))",
+          "        pm.collectionVariables.set(nome,local(new Date(agora.getTime()+horas*3600000)));",
+          "}"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "Sem token: acesso negado",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/api/aluno/aulas"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 401',()=>pm.response.to.have.status(401));",
+              "const json = pm.response.json();"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Token inválido",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenInvalido}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/aluno/aulas"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 401',()=>pm.response.to.have.status(401));",
+              "const json = pm.response.json();"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Cadastro não promove a professor",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/auth/cadastrar",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"nome\": \"Perfil indevido\",\n  \"email\": \"{{runId}}_indevido@aquarius.test\",\n  \"senha\": \"AquariusTeste123!\",\n  \"role\": \"PROFESSOR\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 400',()=>pm.response.to.have.status(400));",
+              "const json = pm.response.json();",
+              "pm.test(\"mensagem contém apenas alunos\",()=>pm.expect(json.mensagem).to.include(\"apenas alunos\"));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Cadastro inválido",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/auth/cadastrar",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"nome\": \"\",\n  \"email\": \"invalido\",\n  \"senha\": \"x\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 400',()=>pm.response.to.have.status(400));",
+              "const json = pm.response.json();",
+              "pm.test('Validação por campo',()=>pm.expect(json.campos).to.have.property('email'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Cadastrar principal",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/auth/cadastrar",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"nome\": \"Aluno fictício principal\",\n  \"email\": \"{{runId}}_principal@aquarius.test\",\n  \"senha\": \"AquariusTeste123!\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 201',()=>pm.response.to.have.status(201));",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('id_principal',json.id);",
+              "pm.test(\"role\",()=>pm.expect(json.role).to.eql(\"ALUNO\"));",
+              "pm.test('Sem hash ou senha',()=>{pm.expect(json).not.to.have.property('senha');pm.expect(json).not.to.have.property('password');});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Login principal",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/auth/login",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{runId}}_principal@aquarius.test\",\n  \"senha\": \"AquariusTeste123!\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('token_principal',json.token);",
+              "pm.test(\"tipo\",()=>pm.expect(json.tipo).to.eql(\"Bearer\"));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "E-mail duplicado",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/auth/cadastrar",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"nome\": \"Duplicado\",\n  \"email\": \"{{runId}}_principal@aquarius.test\",\n  \"senha\": \"AquariusTeste123!\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 409',()=>pm.response.to.have.status(409));",
+              "const json = pm.response.json();"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Senha incorreta",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/auth/login",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{runId}}_principal@aquarius.test\",\n  \"senha\": \"senha-errada\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 401',()=>pm.response.to.have.status(401));",
+              "const json = pm.response.json();"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Login professor fictício",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/auth/login",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{emailProfessor}}\",\n  \"senha\": \"{{senhaProfessor}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('tokenProfessor',json.token);",
+              "pm.test(\"usuario.role\",()=>pm.expect(json.usuario.role).to.eql(\"PROFESSOR\"));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Aluno não cria aula",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token_principal}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/professor/aulas",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"titulo\": \"Indevida\",\n  \"dataHora\": \"{{aulaFutura}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 403',()=>pm.response.to.have.status(403));",
+              "const json = pm.response.json();"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Aluno não altera prazo",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token_principal}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/professor/configuracoes",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"antecedenciaCancelamentoHoras\": 24\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 403',()=>pm.response.to.have.status(403));",
+              "const json = pm.response.json();"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Prazo inválido",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenProfessor}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/professor/configuracoes",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"antecedenciaCancelamentoHoras\": -1\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 400',()=>pm.response.to.have.status(400));",
+              "const json = pm.response.json();"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Gestão altera prazo para 24h",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenProfessor}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/professor/configuracoes",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"antecedenciaCancelamentoHoras\": 24\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test(\"antecedenciaCancelamentoHoras\",()=>pm.expect(json.antecedenciaCancelamentoHoras).to.eql(24));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Prazo persistido consultável pelo aluno",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token_principal}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/configuracoes"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test(\"antecedenciaCancelamentoHoras\",()=>pm.expect(json.antecedenciaCancelamentoHoras).to.eql(24));",
+              "pm.test(\"limiteAlunosPorAula\",()=>pm.expect(json.limiteAlunosPorAula).to.eql(8));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Gestão define prazo inicial 12h",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenProfessor}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/professor/configuracoes",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"antecedenciaCancelamentoHoras\": 12\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test(\"antecedenciaCancelamentoHoras\",()=>pm.expect(json.antecedenciaCancelamentoHoras).to.eql(12));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Rejeitar capacidade diferente de oito",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenProfessor}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/professor/aulas",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"titulo\": \"Capacidade inválida\",\n  \"dataHora\": \"{{aulaFutura}}\",\n  \"limiteAlunos\": 9\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 400',()=>pm.response.to.have.status(400));",
+              "const json = pm.response.json();"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Rejeitar pacote inválido",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenProfessor}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/professor/planos",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"nome\": \"Inválido\",\n  \"aulasPorMes\": 5,\n  \"duracaoMeses\": 2,\n  \"valorMensal\": 100\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 400',()=>pm.response.to.have.status(400));",
+              "const json = pm.response.json();"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Criar mensal quatro créditos",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenProfessor}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/professor/planos",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"nome\": \"Mensal teste\",\n  \"aulasPorMes\": 4,\n  \"duracaoMeses\": 1,\n  \"valorMensal\": 150.5\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 201',()=>pm.response.to.have.status(201));",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('planoMensal',json.id);",
+              "pm.test(\"aulasTotais\",()=>pm.expect(json.aulasTotais).to.eql(4));",
+              "pm.test(\"valorMensal\",()=>pm.expect(json.valorMensal).to.eql(150.5));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Catálogo público",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/api/planos"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test('Plano criado no catálogo',()=>pm.expect(json.some(p=>p.id===pm.collectionVariables.get('planoMensal'))).to.eql(true));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Criar aula: aulaLivre",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenProfessor}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/professor/aulas",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"titulo\": \"Teste Postman aulaLivre\",\n  \"dataHora\": \"{{aulaFutura}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 201',()=>pm.response.to.have.status(201));",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('aulaLivre',json.id);",
+              "pm.test(\"limiteAlunos\",()=>pm.expect(json.limiteAlunos).to.eql(8));",
+              "pm.test(\"vagasDisponiveis\",()=>pm.expect(json.vagasDisponiveis).to.eql(8));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Sem plano não reserva",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token_principal}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/aluno/checkin",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"aulaId\": \"{{aulaLivre}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 409',()=>pm.response.to.have.status(409));",
+              "const json = pm.response.json();",
+              "pm.test(\"mensagem contém plano ativo\",()=>pm.expect(json.mensagem).to.include(\"plano ativo\"));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Criar contrato pendente",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenProfessor}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/professor/contratos",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"alunoId\": \"{{id_principal}}\",\n  \"planoId\": \"{{planoMensal}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 201',()=>pm.response.to.have.status(201));",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('contrato_principal',json.id);",
+              "pm.test(\"situacao\",()=>pm.expect(json.situacao).to.eql(\"AGUARDANDO_PAGAMENTO\"));",
+              "pm.test(\"creditosDisponiveis\",()=>pm.expect(json.creditosDisponiveis).to.eql(0));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Sem primeiro pagamento não reserva",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token_principal}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/aluno/checkin",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"aulaId\": \"{{aulaLivre}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 409',()=>pm.response.to.have.status(409));",
+              "const json = pm.response.json();"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Primeiro pagamento libera quatro",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenProfessor}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/professor/contratos/{{contrato_principal}}/primeiro-pagamento",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"dataPagamento\": \"{{hoje}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test(\"creditosDisponiveis\",()=>pm.expect(json.creditosDisponiveis).to.eql(4));",
+              "pm.test(\"situacao\",()=>pm.expect(json.situacao).to.eql(\"ATIVO\"));",
+              "pm.test('Uma parcela paga',()=>{pm.expect(json.parcelas).to.have.length(1);pm.expect(json.parcelas[0].status).to.eql('PAGO');});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Repetir ativação não duplica crédito",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenProfessor}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/professor/contratos/{{contrato_principal}}/primeiro-pagamento",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"dataPagamento\": \"{{hoje}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 409',()=>pm.response.to.have.status(409));",
+              "const json = pm.response.json();"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Reservar aulaLivre: principal",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token_principal}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/aluno/checkin",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"aulaId\": \"{{aulaLivre}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 201',()=>pm.response.to.have.status(201));",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('reservaLivre',json.id);",
+              "pm.test(\"status\",()=>pm.expect(json.status).to.eql(\"CONFIRMADO\"));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Conferir saldo 3: principal",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token_principal}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/aluno/contratos"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test('Saldo 3',()=>pm.expect(json.find(c=>c.id===pm.collectionVariables.get('contrato_principal')).creditosDisponiveis).to.eql(3));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Reserva duplicada é rejeitada",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token_principal}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/aluno/checkin",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"aulaId\": \"{{aulaLivre}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 409',()=>pm.response.to.have.status(409));",
+              "const json = pm.response.json();"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Cancelamento no prazo devolve crédito",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token_principal}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/aluno/checkins/{{reservaLivre}}/cancelar"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test(\"status\",()=>pm.expect(json.status).to.eql(\"CANCELADO\"));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Conferir saldo 4: principal",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token_principal}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/aluno/contratos"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test('Saldo 4',()=>pm.expect(json.find(c=>c.id===pm.collectionVariables.get('contrato_principal')).creditosDisponiveis).to.eql(4));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Nova reserva reaproveita registro",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token_principal}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/aluno/checkin",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"aulaId\": \"{{aulaLivre}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 201',()=>pm.response.to.have.status(201));",
+              "const json = pm.response.json();",
+              "pm.test('Mesmo registro',()=>pm.expect(json.id).to.eql(pm.collectionVariables.get('reservaLivre')));",
+              "pm.test(\"status\",()=>pm.expect(json.status).to.eql(\"CONFIRMADO\"));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Criar aula: aulaTardia",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenProfessor}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/professor/aulas",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"titulo\": \"Teste Postman aulaTardia\",\n  \"dataHora\": \"{{aulaUmaHora}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 201',()=>pm.response.to.have.status(201));",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('aulaTardia',json.id);",
+              "pm.test(\"limiteAlunos\",()=>pm.expect(json.limiteAlunos).to.eql(8));",
+              "pm.test(\"vagasDisponiveis\",()=>pm.expect(json.vagasDisponiveis).to.eql(8));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Reservar aulaTardia: principal",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token_principal}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/aluno/checkin",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"aulaId\": \"{{aulaTardia}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 201',()=>pm.response.to.have.status(201));",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('reservaTardia',json.id);",
+              "pm.test(\"status\",()=>pm.expect(json.status).to.eql(\"CONFIRMADO\"));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Cancelamento fora do prazo conta falta",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token_principal}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/aluno/checkins/{{reservaTardia}}/cancelar"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test(\"status\",()=>pm.expect(json.status).to.eql(\"FALTA\"));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Conferir saldo 2: principal",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token_principal}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/aluno/contratos"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test('Saldo 2',()=>pm.expect(json.find(c=>c.id===pm.collectionVariables.get('contrato_principal')).creditosDisponiveis).to.eql(2));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Repetir desistência não devolve crédito",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token_principal}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/aluno/checkins/{{reservaTardia}}/cancelar"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test(\"status\",()=>pm.expect(json.status).to.eql(\"FALTA\"));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Conferir saldo 2: principal",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token_principal}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/aluno/contratos"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test('Saldo 2',()=>pm.expect(json.find(c=>c.id===pm.collectionVariables.get('contrato_principal')).creditosDisponiveis).to.eql(2));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Vaga liberada e professor sem dados sensíveis",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token_principal}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/aluno/aulas"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test('Falta libera a vaga',()=>pm.expect(json.find(a=>a.id===pm.collectionVariables.get('aulaTardia')).vagasDisponiveis).to.eql(8));",
+              "pm.test('Sem entidade do professor',()=>{json.forEach(a=>{pm.expect(a).not.to.have.property('professor');pm.expect(a).not.to.have.property('senha');});});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Criar aula: aulaExtra1",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenProfessor}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/professor/aulas",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"titulo\": \"Teste Postman aulaExtra1\",\n  \"dataHora\": \"{{aulaQuatroDias}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 201',()=>pm.response.to.have.status(201));",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('aulaExtra1',json.id);",
+              "pm.test(\"limiteAlunos\",()=>pm.expect(json.limiteAlunos).to.eql(8));",
+              "pm.test(\"vagasDisponiveis\",()=>pm.expect(json.vagasDisponiveis).to.eql(8));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Reservar aulaExtra1: principal",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token_principal}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/aluno/checkin",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"aulaId\": \"{{aulaExtra1}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 201',()=>pm.response.to.have.status(201));",
+              "const json = pm.response.json();",
+              "pm.test(\"status\",()=>pm.expect(json.status).to.eql(\"CONFIRMADO\"));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Criar aula: aulaExtra2",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenProfessor}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/professor/aulas",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"titulo\": \"Teste Postman aulaExtra2\",\n  \"dataHora\": \"{{aulaCincoDias}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 201',()=>pm.response.to.have.status(201));",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('aulaExtra2',json.id);",
+              "pm.test(\"limiteAlunos\",()=>pm.expect(json.limiteAlunos).to.eql(8));",
+              "pm.test(\"vagasDisponiveis\",()=>pm.expect(json.vagasDisponiveis).to.eql(8));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Reservar aulaExtra2: principal",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token_principal}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/aluno/checkin",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"aulaId\": \"{{aulaExtra2}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 201',()=>pm.response.to.have.status(201));",
+              "const json = pm.response.json();",
+              "pm.test(\"status\",()=>pm.expect(json.status).to.eql(\"CONFIRMADO\"));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Conferir saldo 0: principal",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token_principal}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/aluno/contratos"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test('Saldo 0',()=>pm.expect(json.find(c=>c.id===pm.collectionVariables.get('contrato_principal')).creditosDisponiveis).to.eql(0));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Criar aula: aulaSemSaldo",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenProfessor}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/professor/aulas",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"titulo\": \"Teste Postman aulaSemSaldo\",\n  \"dataHora\": \"{{aulaSeisDias}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 201',()=>pm.response.to.have.status(201));",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('aulaSemSaldo',json.id);",
+              "pm.test(\"limiteAlunos\",()=>pm.expect(json.limiteAlunos).to.eql(8));",
+              "pm.test(\"vagasDisponiveis\",()=>pm.expect(json.vagasDisponiveis).to.eql(8));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Quatro créditos esgotados bloqueiam quinta aula",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token_principal}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/aluno/checkin",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"aulaId\": \"{{aulaSemSaldo}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 409',()=>pm.response.to.have.status(409));",
+              "const json = pm.response.json();",
+              "pm.test(\"mensagem contém Saldo\",()=>pm.expect(json.mensagem).to.include(\"Saldo\"));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Professor consulta participantes",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenProfessor}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/professor/aulas/{{aulaLivre}}/checkins"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test('Participante correto',()=>pm.expect(json.some(c=>c.alunoId===pm.collectionVariables.get('id_principal'))).to.eql(true));",
+              "pm.test('Sem senha e e-mail',()=>json.forEach(c=>{pm.expect(c).not.to.have.property('senha');pm.expect(c).not.to.have.property('email');}));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Cadastrar concorrente",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/auth/cadastrar",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"nome\": \"Aluno fictício concorrente\",\n  \"email\": \"{{runId}}_concorrente@aquarius.test\",\n  \"senha\": \"AquariusTeste123!\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 201',()=>pm.response.to.have.status(201));",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('id_concorrente',json.id);",
+              "pm.test(\"role\",()=>pm.expect(json.role).to.eql(\"ALUNO\"));",
+              "pm.test('Sem hash ou senha',()=>{pm.expect(json).not.to.have.property('senha');pm.expect(json).not.to.have.property('password');});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Login concorrente",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/auth/login",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{runId}}_concorrente@aquarius.test\",\n  \"senha\": \"AquariusTeste123!\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('token_concorrente',json.token);",
+              "pm.test(\"tipo\",()=>pm.expect(json.tipo).to.eql(\"Bearer\"));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Contratar pacote: concorrente",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenProfessor}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/professor/contratos",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"alunoId\": \"{{id_concorrente}}\",\n  \"planoId\": \"{{planoMensal}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 201',()=>pm.response.to.have.status(201));",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('contrato_concorrente',json.id);",
+              "pm.test(\"situacao\",()=>pm.expect(json.situacao).to.eql(\"AGUARDANDO_PAGAMENTO\"));",
+              "pm.test(\"creditosDisponiveis\",()=>pm.expect(json.creditosDisponiveis).to.eql(0));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Primeiro pagamento: concorrente",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenProfessor}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/professor/contratos/{{contrato_concorrente}}/primeiro-pagamento",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"dataPagamento\": \"{{hoje}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('contrato_concorrente',json.id);",
+              "pm.test(\"situacao\",()=>pm.expect(json.situacao).to.eql(\"ATIVO\"));",
+              "pm.test(\"creditosDisponiveis\",()=>pm.expect(json.creditosDisponiveis).to.eql(4));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Criar aula: aulaConsumo1",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenProfessor}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/professor/aulas",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"titulo\": \"Teste Postman aulaConsumo1\",\n  \"dataHora\": \"{{aulaFutura}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 201',()=>pm.response.to.have.status(201));",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('aulaConsumo1',json.id);",
+              "pm.test(\"limiteAlunos\",()=>pm.expect(json.limiteAlunos).to.eql(8));",
+              "pm.test(\"vagasDisponiveis\",()=>pm.expect(json.vagasDisponiveis).to.eql(8));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Reservar aulaConsumo1: concorrente",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token_concorrente}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/aluno/checkin",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"aulaId\": \"{{aulaConsumo1}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 201',()=>pm.response.to.have.status(201));",
+              "const json = pm.response.json();",
+              "pm.test(\"status\",()=>pm.expect(json.status).to.eql(\"CONFIRMADO\"));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Criar aula: aulaConsumo2",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenProfessor}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/professor/aulas",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"titulo\": \"Teste Postman aulaConsumo2\",\n  \"dataHora\": \"{{aulaFutura}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 201',()=>pm.response.to.have.status(201));",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('aulaConsumo2',json.id);",
+              "pm.test(\"limiteAlunos\",()=>pm.expect(json.limiteAlunos).to.eql(8));",
+              "pm.test(\"vagasDisponiveis\",()=>pm.expect(json.vagasDisponiveis).to.eql(8));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Reservar aulaConsumo2: concorrente",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token_concorrente}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/aluno/checkin",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"aulaId\": \"{{aulaConsumo2}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 201',()=>pm.response.to.have.status(201));",
+              "const json = pm.response.json();",
+              "pm.test(\"status\",()=>pm.expect(json.status).to.eql(\"CONFIRMADO\"));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Criar aula: aulaConsumo3",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenProfessor}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/professor/aulas",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"titulo\": \"Teste Postman aulaConsumo3\",\n  \"dataHora\": \"{{aulaFutura}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 201',()=>pm.response.to.have.status(201));",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('aulaConsumo3',json.id);",
+              "pm.test(\"limiteAlunos\",()=>pm.expect(json.limiteAlunos).to.eql(8));",
+              "pm.test(\"vagasDisponiveis\",()=>pm.expect(json.vagasDisponiveis).to.eql(8));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Reservar aulaConsumo3: concorrente",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token_concorrente}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/aluno/checkin",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"aulaId\": \"{{aulaConsumo3}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 201',()=>pm.response.to.have.status(201));",
+              "const json = pm.response.json();",
+              "pm.test(\"status\",()=>pm.expect(json.status).to.eql(\"CONFIRMADO\"));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Conferir saldo 1: concorrente",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token_concorrente}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/aluno/contratos"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test('Saldo 1',()=>pm.expect(json.find(c=>c.id===pm.collectionVariables.get('contrato_concorrente')).creditosDisponiveis).to.eql(1));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Criar aula: aulaConcA",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenProfessor}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/professor/aulas",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"titulo\": \"Teste Postman aulaConcA\",\n  \"dataHora\": \"{{aulaFutura}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 201',()=>pm.response.to.have.status(201));",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('aulaConcA',json.id);",
+              "pm.test(\"limiteAlunos\",()=>pm.expect(json.limiteAlunos).to.eql(8));",
+              "pm.test(\"vagasDisponiveis\",()=>pm.expect(json.vagasDisponiveis).to.eql(8));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Criar aula: aulaConcB",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenProfessor}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/professor/aulas",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"titulo\": \"Teste Postman aulaConcB\",\n  \"dataHora\": \"{{aulaFutura}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 201',()=>pm.response.to.have.status(201));",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('aulaConcB',json.id);",
+              "pm.test(\"limiteAlunos\",()=>pm.expect(json.limiteAlunos).to.eql(8));",
+              "pm.test(\"vagasDisponiveis\",()=>pm.expect(json.vagasDisponiveis).to.eql(8));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Disputa pelo último crédito em duas aulas",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenProfessor}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/auth/me"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "const pares=[{\"token\":\"token_concorrente\",\"aula\":\"aulaConcA\"},{\"token\":\"token_concorrente\",\"aula\":\"aulaConcB\"}];",
+              "const resultados=[];",
+              "pares.forEach(p=>pm.sendRequest({url:pm.environment.get(\"baseUrl\")+\"/api/aluno/checkin\",method:\"POST\",header:[{key:\"Authorization\",value:\"Bearer \"+pm.collectionVariables.get(p.token)},{key:\"Content-Type\",value:\"application/json\"}],body:{mode:\"raw\",raw:JSON.stringify({aulaId:pm.collectionVariables.get(p.aula)})}},(err,res)=>{",
+              "resultados.push(err ? \"ERRO\" : res.code);",
+              "if(resultados.length===2) pm.test(\"Só uma reserva usa o último crédito\",()=>pm.expect(resultados.sort()).to.eql([201,409]));",
+              "}));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Conferir saldo 0: concorrente",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token_concorrente}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/aluno/contratos"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test('Saldo 0',()=>pm.expect(json.find(c=>c.id===pm.collectionVariables.get('contrato_concorrente')).creditosDisponiveis).to.eql(0));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Criar aula: aulaLotacao",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenProfessor}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/professor/aulas",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"titulo\": \"Teste Postman aulaLotacao\",\n  \"dataHora\": \"{{aulaSeteDias}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 201',()=>pm.response.to.have.status(201));",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('aulaLotacao',json.id);",
+              "pm.test(\"limiteAlunos\",()=>pm.expect(json.limiteAlunos).to.eql(8));",
+              "pm.test(\"vagasDisponiveis\",()=>pm.expect(json.vagasDisponiveis).to.eql(8));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Cadastrar ocupante1",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/auth/cadastrar",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"nome\": \"Aluno fictício ocupante1\",\n  \"email\": \"{{runId}}_ocupante1@aquarius.test\",\n  \"senha\": \"AquariusTeste123!\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 201',()=>pm.response.to.have.status(201));",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('id_ocupante1',json.id);",
+              "pm.test(\"role\",()=>pm.expect(json.role).to.eql(\"ALUNO\"));",
+              "pm.test('Sem hash ou senha',()=>{pm.expect(json).not.to.have.property('senha');pm.expect(json).not.to.have.property('password');});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Login ocupante1",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/auth/login",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{runId}}_ocupante1@aquarius.test\",\n  \"senha\": \"AquariusTeste123!\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('token_ocupante1',json.token);",
+              "pm.test(\"tipo\",()=>pm.expect(json.tipo).to.eql(\"Bearer\"));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Contratar pacote: ocupante1",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenProfessor}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/professor/contratos",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"alunoId\": \"{{id_ocupante1}}\",\n  \"planoId\": \"{{planoMensal}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 201',()=>pm.response.to.have.status(201));",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('contrato_ocupante1',json.id);",
+              "pm.test(\"situacao\",()=>pm.expect(json.situacao).to.eql(\"AGUARDANDO_PAGAMENTO\"));",
+              "pm.test(\"creditosDisponiveis\",()=>pm.expect(json.creditosDisponiveis).to.eql(0));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Primeiro pagamento: ocupante1",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenProfessor}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/professor/contratos/{{contrato_ocupante1}}/primeiro-pagamento",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"dataPagamento\": \"{{hoje}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('contrato_ocupante1',json.id);",
+              "pm.test(\"situacao\",()=>pm.expect(json.situacao).to.eql(\"ATIVO\"));",
+              "pm.test(\"creditosDisponiveis\",()=>pm.expect(json.creditosDisponiveis).to.eql(4));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Reservar aulaLotacao: ocupante1",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token_ocupante1}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/aluno/checkin",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"aulaId\": \"{{aulaLotacao}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 201',()=>pm.response.to.have.status(201));",
+              "const json = pm.response.json();",
+              "pm.test(\"status\",()=>pm.expect(json.status).to.eql(\"CONFIRMADO\"));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Cadastrar ocupante2",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/auth/cadastrar",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"nome\": \"Aluno fictício ocupante2\",\n  \"email\": \"{{runId}}_ocupante2@aquarius.test\",\n  \"senha\": \"AquariusTeste123!\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 201',()=>pm.response.to.have.status(201));",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('id_ocupante2',json.id);",
+              "pm.test(\"role\",()=>pm.expect(json.role).to.eql(\"ALUNO\"));",
+              "pm.test('Sem hash ou senha',()=>{pm.expect(json).not.to.have.property('senha');pm.expect(json).not.to.have.property('password');});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Login ocupante2",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/auth/login",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{runId}}_ocupante2@aquarius.test\",\n  \"senha\": \"AquariusTeste123!\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('token_ocupante2',json.token);",
+              "pm.test(\"tipo\",()=>pm.expect(json.tipo).to.eql(\"Bearer\"));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Contratar pacote: ocupante2",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenProfessor}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/professor/contratos",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"alunoId\": \"{{id_ocupante2}}\",\n  \"planoId\": \"{{planoMensal}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 201',()=>pm.response.to.have.status(201));",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('contrato_ocupante2',json.id);",
+              "pm.test(\"situacao\",()=>pm.expect(json.situacao).to.eql(\"AGUARDANDO_PAGAMENTO\"));",
+              "pm.test(\"creditosDisponiveis\",()=>pm.expect(json.creditosDisponiveis).to.eql(0));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Primeiro pagamento: ocupante2",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenProfessor}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/professor/contratos/{{contrato_ocupante2}}/primeiro-pagamento",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"dataPagamento\": \"{{hoje}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('contrato_ocupante2',json.id);",
+              "pm.test(\"situacao\",()=>pm.expect(json.situacao).to.eql(\"ATIVO\"));",
+              "pm.test(\"creditosDisponiveis\",()=>pm.expect(json.creditosDisponiveis).to.eql(4));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Reservar aulaLotacao: ocupante2",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token_ocupante2}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/aluno/checkin",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"aulaId\": \"{{aulaLotacao}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 201',()=>pm.response.to.have.status(201));",
+              "const json = pm.response.json();",
+              "pm.test(\"status\",()=>pm.expect(json.status).to.eql(\"CONFIRMADO\"));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Cadastrar ocupante3",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/auth/cadastrar",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"nome\": \"Aluno fictício ocupante3\",\n  \"email\": \"{{runId}}_ocupante3@aquarius.test\",\n  \"senha\": \"AquariusTeste123!\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 201',()=>pm.response.to.have.status(201));",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('id_ocupante3',json.id);",
+              "pm.test(\"role\",()=>pm.expect(json.role).to.eql(\"ALUNO\"));",
+              "pm.test('Sem hash ou senha',()=>{pm.expect(json).not.to.have.property('senha');pm.expect(json).not.to.have.property('password');});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Login ocupante3",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/auth/login",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{runId}}_ocupante3@aquarius.test\",\n  \"senha\": \"AquariusTeste123!\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('token_ocupante3',json.token);",
+              "pm.test(\"tipo\",()=>pm.expect(json.tipo).to.eql(\"Bearer\"));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Contratar pacote: ocupante3",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenProfessor}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/professor/contratos",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"alunoId\": \"{{id_ocupante3}}\",\n  \"planoId\": \"{{planoMensal}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 201',()=>pm.response.to.have.status(201));",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('contrato_ocupante3',json.id);",
+              "pm.test(\"situacao\",()=>pm.expect(json.situacao).to.eql(\"AGUARDANDO_PAGAMENTO\"));",
+              "pm.test(\"creditosDisponiveis\",()=>pm.expect(json.creditosDisponiveis).to.eql(0));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Primeiro pagamento: ocupante3",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenProfessor}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/professor/contratos/{{contrato_ocupante3}}/primeiro-pagamento",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"dataPagamento\": \"{{hoje}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('contrato_ocupante3',json.id);",
+              "pm.test(\"situacao\",()=>pm.expect(json.situacao).to.eql(\"ATIVO\"));",
+              "pm.test(\"creditosDisponiveis\",()=>pm.expect(json.creditosDisponiveis).to.eql(4));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Reservar aulaLotacao: ocupante3",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token_ocupante3}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/aluno/checkin",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"aulaId\": \"{{aulaLotacao}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 201',()=>pm.response.to.have.status(201));",
+              "const json = pm.response.json();",
+              "pm.test(\"status\",()=>pm.expect(json.status).to.eql(\"CONFIRMADO\"));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Cadastrar ocupante4",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/auth/cadastrar",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"nome\": \"Aluno fictício ocupante4\",\n  \"email\": \"{{runId}}_ocupante4@aquarius.test\",\n  \"senha\": \"AquariusTeste123!\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 201',()=>pm.response.to.have.status(201));",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('id_ocupante4',json.id);",
+              "pm.test(\"role\",()=>pm.expect(json.role).to.eql(\"ALUNO\"));",
+              "pm.test('Sem hash ou senha',()=>{pm.expect(json).not.to.have.property('senha');pm.expect(json).not.to.have.property('password');});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Login ocupante4",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/auth/login",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{runId}}_ocupante4@aquarius.test\",\n  \"senha\": \"AquariusTeste123!\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('token_ocupante4',json.token);",
+              "pm.test(\"tipo\",()=>pm.expect(json.tipo).to.eql(\"Bearer\"));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Contratar pacote: ocupante4",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenProfessor}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/professor/contratos",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"alunoId\": \"{{id_ocupante4}}\",\n  \"planoId\": \"{{planoMensal}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 201',()=>pm.response.to.have.status(201));",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('contrato_ocupante4',json.id);",
+              "pm.test(\"situacao\",()=>pm.expect(json.situacao).to.eql(\"AGUARDANDO_PAGAMENTO\"));",
+              "pm.test(\"creditosDisponiveis\",()=>pm.expect(json.creditosDisponiveis).to.eql(0));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Primeiro pagamento: ocupante4",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenProfessor}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/professor/contratos/{{contrato_ocupante4}}/primeiro-pagamento",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"dataPagamento\": \"{{hoje}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('contrato_ocupante4',json.id);",
+              "pm.test(\"situacao\",()=>pm.expect(json.situacao).to.eql(\"ATIVO\"));",
+              "pm.test(\"creditosDisponiveis\",()=>pm.expect(json.creditosDisponiveis).to.eql(4));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Reservar aulaLotacao: ocupante4",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token_ocupante4}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/aluno/checkin",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"aulaId\": \"{{aulaLotacao}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 201',()=>pm.response.to.have.status(201));",
+              "const json = pm.response.json();",
+              "pm.test(\"status\",()=>pm.expect(json.status).to.eql(\"CONFIRMADO\"));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Cadastrar ocupante5",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/auth/cadastrar",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"nome\": \"Aluno fictício ocupante5\",\n  \"email\": \"{{runId}}_ocupante5@aquarius.test\",\n  \"senha\": \"AquariusTeste123!\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 201',()=>pm.response.to.have.status(201));",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('id_ocupante5',json.id);",
+              "pm.test(\"role\",()=>pm.expect(json.role).to.eql(\"ALUNO\"));",
+              "pm.test('Sem hash ou senha',()=>{pm.expect(json).not.to.have.property('senha');pm.expect(json).not.to.have.property('password');});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Login ocupante5",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/auth/login",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{runId}}_ocupante5@aquarius.test\",\n  \"senha\": \"AquariusTeste123!\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('token_ocupante5',json.token);",
+              "pm.test(\"tipo\",()=>pm.expect(json.tipo).to.eql(\"Bearer\"));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Contratar pacote: ocupante5",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenProfessor}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/professor/contratos",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"alunoId\": \"{{id_ocupante5}}\",\n  \"planoId\": \"{{planoMensal}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 201',()=>pm.response.to.have.status(201));",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('contrato_ocupante5',json.id);",
+              "pm.test(\"situacao\",()=>pm.expect(json.situacao).to.eql(\"AGUARDANDO_PAGAMENTO\"));",
+              "pm.test(\"creditosDisponiveis\",()=>pm.expect(json.creditosDisponiveis).to.eql(0));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Primeiro pagamento: ocupante5",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenProfessor}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/professor/contratos/{{contrato_ocupante5}}/primeiro-pagamento",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"dataPagamento\": \"{{hoje}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('contrato_ocupante5',json.id);",
+              "pm.test(\"situacao\",()=>pm.expect(json.situacao).to.eql(\"ATIVO\"));",
+              "pm.test(\"creditosDisponiveis\",()=>pm.expect(json.creditosDisponiveis).to.eql(4));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Reservar aulaLotacao: ocupante5",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token_ocupante5}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/aluno/checkin",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"aulaId\": \"{{aulaLotacao}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 201',()=>pm.response.to.have.status(201));",
+              "const json = pm.response.json();",
+              "pm.test(\"status\",()=>pm.expect(json.status).to.eql(\"CONFIRMADO\"));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Cadastrar ocupante6",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/auth/cadastrar",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"nome\": \"Aluno fictício ocupante6\",\n  \"email\": \"{{runId}}_ocupante6@aquarius.test\",\n  \"senha\": \"AquariusTeste123!\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 201',()=>pm.response.to.have.status(201));",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('id_ocupante6',json.id);",
+              "pm.test(\"role\",()=>pm.expect(json.role).to.eql(\"ALUNO\"));",
+              "pm.test('Sem hash ou senha',()=>{pm.expect(json).not.to.have.property('senha');pm.expect(json).not.to.have.property('password');});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Login ocupante6",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/auth/login",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{runId}}_ocupante6@aquarius.test\",\n  \"senha\": \"AquariusTeste123!\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('token_ocupante6',json.token);",
+              "pm.test(\"tipo\",()=>pm.expect(json.tipo).to.eql(\"Bearer\"));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Contratar pacote: ocupante6",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenProfessor}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/professor/contratos",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"alunoId\": \"{{id_ocupante6}}\",\n  \"planoId\": \"{{planoMensal}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 201',()=>pm.response.to.have.status(201));",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('contrato_ocupante6',json.id);",
+              "pm.test(\"situacao\",()=>pm.expect(json.situacao).to.eql(\"AGUARDANDO_PAGAMENTO\"));",
+              "pm.test(\"creditosDisponiveis\",()=>pm.expect(json.creditosDisponiveis).to.eql(0));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Primeiro pagamento: ocupante6",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenProfessor}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/professor/contratos/{{contrato_ocupante6}}/primeiro-pagamento",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"dataPagamento\": \"{{hoje}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('contrato_ocupante6',json.id);",
+              "pm.test(\"situacao\",()=>pm.expect(json.situacao).to.eql(\"ATIVO\"));",
+              "pm.test(\"creditosDisponiveis\",()=>pm.expect(json.creditosDisponiveis).to.eql(4));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Reservar aulaLotacao: ocupante6",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token_ocupante6}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/aluno/checkin",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"aulaId\": \"{{aulaLotacao}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 201',()=>pm.response.to.have.status(201));",
+              "const json = pm.response.json();",
+              "pm.test(\"status\",()=>pm.expect(json.status).to.eql(\"CONFIRMADO\"));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Cadastrar ocupante7",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/auth/cadastrar",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"nome\": \"Aluno fictício ocupante7\",\n  \"email\": \"{{runId}}_ocupante7@aquarius.test\",\n  \"senha\": \"AquariusTeste123!\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 201',()=>pm.response.to.have.status(201));",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('id_ocupante7',json.id);",
+              "pm.test(\"role\",()=>pm.expect(json.role).to.eql(\"ALUNO\"));",
+              "pm.test('Sem hash ou senha',()=>{pm.expect(json).not.to.have.property('senha');pm.expect(json).not.to.have.property('password');});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Login ocupante7",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/auth/login",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{runId}}_ocupante7@aquarius.test\",\n  \"senha\": \"AquariusTeste123!\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('token_ocupante7',json.token);",
+              "pm.test(\"tipo\",()=>pm.expect(json.tipo).to.eql(\"Bearer\"));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Contratar pacote: ocupante7",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenProfessor}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/professor/contratos",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"alunoId\": \"{{id_ocupante7}}\",\n  \"planoId\": \"{{planoMensal}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 201',()=>pm.response.to.have.status(201));",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('contrato_ocupante7',json.id);",
+              "pm.test(\"situacao\",()=>pm.expect(json.situacao).to.eql(\"AGUARDANDO_PAGAMENTO\"));",
+              "pm.test(\"creditosDisponiveis\",()=>pm.expect(json.creditosDisponiveis).to.eql(0));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Primeiro pagamento: ocupante7",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenProfessor}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/professor/contratos/{{contrato_ocupante7}}/primeiro-pagamento",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"dataPagamento\": \"{{hoje}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('contrato_ocupante7',json.id);",
+              "pm.test(\"situacao\",()=>pm.expect(json.situacao).to.eql(\"ATIVO\"));",
+              "pm.test(\"creditosDisponiveis\",()=>pm.expect(json.creditosDisponiveis).to.eql(4));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Reservar aulaLotacao: ocupante7",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token_ocupante7}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/aluno/checkin",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"aulaId\": \"{{aulaLotacao}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 201',()=>pm.response.to.have.status(201));",
+              "const json = pm.response.json();",
+              "pm.test(\"status\",()=>pm.expect(json.status).to.eql(\"CONFIRMADO\"));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Cadastrar ocupante8",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/auth/cadastrar",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"nome\": \"Aluno fictício ocupante8\",\n  \"email\": \"{{runId}}_ocupante8@aquarius.test\",\n  \"senha\": \"AquariusTeste123!\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 201',()=>pm.response.to.have.status(201));",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('id_ocupante8',json.id);",
+              "pm.test(\"role\",()=>pm.expect(json.role).to.eql(\"ALUNO\"));",
+              "pm.test('Sem hash ou senha',()=>{pm.expect(json).not.to.have.property('senha');pm.expect(json).not.to.have.property('password');});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Login ocupante8",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/auth/login",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{runId}}_ocupante8@aquarius.test\",\n  \"senha\": \"AquariusTeste123!\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('token_ocupante8',json.token);",
+              "pm.test(\"tipo\",()=>pm.expect(json.tipo).to.eql(\"Bearer\"));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Contratar pacote: ocupante8",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenProfessor}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/professor/contratos",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"alunoId\": \"{{id_ocupante8}}\",\n  \"planoId\": \"{{planoMensal}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 201',()=>pm.response.to.have.status(201));",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('contrato_ocupante8',json.id);",
+              "pm.test(\"situacao\",()=>pm.expect(json.situacao).to.eql(\"AGUARDANDO_PAGAMENTO\"));",
+              "pm.test(\"creditosDisponiveis\",()=>pm.expect(json.creditosDisponiveis).to.eql(0));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Primeiro pagamento: ocupante8",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenProfessor}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/professor/contratos/{{contrato_ocupante8}}/primeiro-pagamento",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"dataPagamento\": \"{{hoje}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('contrato_ocupante8',json.id);",
+              "pm.test(\"situacao\",()=>pm.expect(json.situacao).to.eql(\"ATIVO\"));",
+              "pm.test(\"creditosDisponiveis\",()=>pm.expect(json.creditosDisponiveis).to.eql(4));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Cadastrar ocupante9",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/auth/cadastrar",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"nome\": \"Aluno fictício ocupante9\",\n  \"email\": \"{{runId}}_ocupante9@aquarius.test\",\n  \"senha\": \"AquariusTeste123!\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 201',()=>pm.response.to.have.status(201));",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('id_ocupante9',json.id);",
+              "pm.test(\"role\",()=>pm.expect(json.role).to.eql(\"ALUNO\"));",
+              "pm.test('Sem hash ou senha',()=>{pm.expect(json).not.to.have.property('senha');pm.expect(json).not.to.have.property('password');});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Login ocupante9",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/auth/login",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{runId}}_ocupante9@aquarius.test\",\n  \"senha\": \"AquariusTeste123!\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('token_ocupante9',json.token);",
+              "pm.test(\"tipo\",()=>pm.expect(json.tipo).to.eql(\"Bearer\"));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Contratar pacote: ocupante9",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenProfessor}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/professor/contratos",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"alunoId\": \"{{id_ocupante9}}\",\n  \"planoId\": \"{{planoMensal}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 201',()=>pm.response.to.have.status(201));",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('contrato_ocupante9',json.id);",
+              "pm.test(\"situacao\",()=>pm.expect(json.situacao).to.eql(\"AGUARDANDO_PAGAMENTO\"));",
+              "pm.test(\"creditosDisponiveis\",()=>pm.expect(json.creditosDisponiveis).to.eql(0));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Primeiro pagamento: ocupante9",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenProfessor}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/professor/contratos/{{contrato_ocupante9}}/primeiro-pagamento",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"dataPagamento\": \"{{hoje}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('contrato_ocupante9',json.id);",
+              "pm.test(\"situacao\",()=>pm.expect(json.situacao).to.eql(\"ATIVO\"));",
+              "pm.test(\"creditosDisponiveis\",()=>pm.expect(json.creditosDisponiveis).to.eql(4));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Dois alunos disputam a oitava vaga",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenProfessor}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/auth/me"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "const pares=[{\"token\":\"token_ocupante8\",\"aula\":\"aulaLotacao\"},{\"token\":\"token_ocupante9\",\"aula\":\"aulaLotacao\"}];",
+              "const resultados=[];",
+              "pares.forEach(p=>pm.sendRequest({url:pm.environment.get(\"baseUrl\")+\"/api/aluno/checkin\",method:\"POST\",header:[{key:\"Authorization\",value:\"Bearer \"+pm.collectionVariables.get(p.token)},{key:\"Content-Type\",value:\"application/json\"}],body:{mode:\"raw\",raw:JSON.stringify({aulaId:pm.collectionVariables.get(p.aula)})}},(err,res)=>{",
+              "resultados.push(err ? \"ERRO\" : res.code);",
+              "if(resultados.length===2) pm.test(\"Só um aluno ocupa a última vaga\",()=>pm.expect(resultados.sort()).to.eql([201,409]));",
+              "}));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Nona pessoa não ultrapassa lotação",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token_principal}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/aluno/checkin",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"aulaId\": \"{{aulaLotacao}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 409',()=>pm.response.to.have.status(409));",
+              "const json = pm.response.json();",
+              "pm.test(\"mensagem contém lotada\",()=>pm.expect(json.mensagem).to.include(\"lotada\"));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Lotação final de oito",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token_principal}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/aluno/aulas"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test('Zero vagas',()=>pm.expect(json.find(a=>a.id===pm.collectionVariables.get('aulaLotacao')).vagasDisponiveis).to.eql(0));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Outro aluno não cancela minha reserva",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token_ocupante9}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/aluno/checkins/{{reservaLivre}}/cancelar"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 404',()=>pm.response.to.have.status(404));",
+              "const json = pm.response.json();"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Outro aluno só vê seus próprios contratos",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token_ocupante9}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/aluno/contratos"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test('Isolamento dos contratos',()=>json.forEach(c=>pm.expect(c.alunoId).to.eql(pm.collectionVariables.get('id_ocupante9'))));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Criar trimestral doze créditos",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenProfessor}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/professor/planos",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"nome\": \"Trimestral teste\",\n  \"aulasPorMes\": 4,\n  \"duracaoMeses\": 3,\n  \"valorMensal\": 150.5\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 201',()=>pm.response.to.have.status(201));",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('planoTri',json.id);",
+              "pm.test(\"aulasTotais\",()=>pm.expect(json.aulasTotais).to.eql(12));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Cadastrar trimestral",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/auth/cadastrar",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"nome\": \"Aluno fictício trimestral\",\n  \"email\": \"{{runId}}_trimestral@aquarius.test\",\n  \"senha\": \"AquariusTeste123!\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 201',()=>pm.response.to.have.status(201));",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('id_trimestral',json.id);",
+              "pm.test(\"role\",()=>pm.expect(json.role).to.eql(\"ALUNO\"));",
+              "pm.test('Sem hash ou senha',()=>{pm.expect(json).not.to.have.property('senha');pm.expect(json).not.to.have.property('password');});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Login trimestral",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/auth/login",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{runId}}_trimestral@aquarius.test\",\n  \"senha\": \"AquariusTeste123!\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('token_trimestral',json.token);",
+              "pm.test(\"tipo\",()=>pm.expect(json.tipo).to.eql(\"Bearer\"));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Contratar trimestral",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenProfessor}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/professor/contratos",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"alunoId\": \"{{id_trimestral}}\",\n  \"planoId\": \"{{planoTri}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 201',()=>pm.response.to.have.status(201));",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('contrato_trimestral',json.id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Trimestral antigo com parcela já vencida",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenProfessor}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/professor/contratos/{{contrato_trimestral}}/primeiro-pagamento",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"dataPagamento\": \"{{umMesAtras}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test(\"aulasContratadas\",()=>pm.expect(json.aulasContratadas).to.eql(12));",
+              "pm.test(\"situacao\",()=>pm.expect(json.situacao).to.eql(\"INADIMPLENTE\"));",
+              "pm.test('Três parcelas',()=>pm.expect(json.parcelas).to.have.length(3));",
+              "pm.collectionVariables.set('parcelaTri',json.parcelas[1].id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Inadimplência impede reserva",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token_trimestral}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/aluno/checkin",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"aulaId\": \"{{aulaSemSaldo}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 409',()=>pm.response.to.have.status(409));",
+              "const json = pm.response.json();",
+              "pm.test(\"mensagem contém parcela\",()=>pm.expect(json.mensagem).to.include(\"parcela\"));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Aluno não pode dar baixa em pagamento",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token_trimestral}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/professor/pagamentos/{{parcelaTri}}/confirmar",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"dataPagamento\": \"{{hoje}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 403',()=>pm.response.to.have.status(403));",
+              "const json = pm.response.json();"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Gestão dá baixa na parcela",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenProfessor}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/professor/pagamentos/{{parcelaTri}}/confirmar",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"dataPagamento\": \"{{hoje}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test(\"status\",()=>pm.expect(json.status).to.eql(\"PAGO\"));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Conferir saldo 12: trimestral",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token_trimestral}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/aluno/contratos"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test('Saldo 12',()=>pm.expect(json.find(c=>c.id===pm.collectionVariables.get('contrato_trimestral')).creditosDisponiveis).to.eql(12));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Reservar aulaSemSaldo: trimestral",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token_trimestral}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/aluno/checkin",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"aulaId\": \"{{aulaSemSaldo}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 201',()=>pm.response.to.have.status(201));",
+              "const json = pm.response.json();",
+              "pm.test(\"status\",()=>pm.expect(json.status).to.eql(\"CONFIRMADO\"));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Conferir saldo 11: trimestral",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token_trimestral}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/aluno/contratos"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test('Saldo 11',()=>pm.expect(json.find(c=>c.id===pm.collectionVariables.get('contrato_trimestral')).creditosDisponiveis).to.eql(11));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Repetir baixa não acrescenta créditos",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenProfessor}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/professor/pagamentos/{{parcelaTri}}/confirmar",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"dataPagamento\": \"{{hoje}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test(\"status\",()=>pm.expect(json.status).to.eql(\"PAGO\"));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Conferir saldo 11: trimestral",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token_trimestral}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/aluno/contratos"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test('Saldo 11',()=>pm.expect(json.find(c=>c.id===pm.collectionVariables.get('contrato_trimestral')).creditosDisponiveis).to.eql(11));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Cadastrar vencido",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/auth/cadastrar",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"nome\": \"Aluno fictício vencido\",\n  \"email\": \"{{runId}}_vencido@aquarius.test\",\n  \"senha\": \"AquariusTeste123!\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 201',()=>pm.response.to.have.status(201));",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('id_vencido',json.id);",
+              "pm.test(\"role\",()=>pm.expect(json.role).to.eql(\"ALUNO\"));",
+              "pm.test('Sem hash ou senha',()=>{pm.expect(json).not.to.have.property('senha');pm.expect(json).not.to.have.property('password');});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Login vencido",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/auth/login",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{runId}}_vencido@aquarius.test\",\n  \"senha\": \"AquariusTeste123!\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('token_vencido',json.token);",
+              "pm.test(\"tipo\",()=>pm.expect(json.tipo).to.eql(\"Bearer\"));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Contratar pacote: vencido",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenProfessor}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/professor/contratos",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"alunoId\": \"{{id_vencido}}\",\n  \"planoId\": \"{{planoMensal}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 201',()=>pm.response.to.have.status(201));",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('contrato_vencido',json.id);",
+              "pm.test(\"situacao\",()=>pm.expect(json.situacao).to.eql(\"AGUARDANDO_PAGAMENTO\"));",
+              "pm.test(\"creditosDisponiveis\",()=>pm.expect(json.creditosDisponiveis).to.eql(0));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Primeiro pagamento: vencido",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenProfessor}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/professor/contratos/{{contrato_vencido}}/primeiro-pagamento",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"dataPagamento\": \"{{doisMesesAtras}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('contrato_vencido',json.id);",
+              "pm.test(\"situacao\",()=>pm.expect(json.situacao).to.eql(\"VENCIDO\"));",
+              "pm.test(\"creditosDisponiveis\",()=>pm.expect(json.creditosDisponiveis).to.eql(0));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Plano vencido impede reserva",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token_vencido}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/aluno/checkin",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"aulaId\": \"{{aulaSemSaldo}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 409',()=>pm.response.to.have.status(409));",
+              "const json = pm.response.json();",
+              "pm.test(\"mensagem contém plano ativo\",()=>pm.expect(json.mensagem).to.include(\"plano ativo\"));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Contratar pacote: vencido",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenProfessor}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/professor/contratos",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"alunoId\": \"{{id_vencido}}\",\n  \"planoId\": \"{{planoMensal}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 201',()=>pm.response.to.have.status(201));",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('contrato_vencido',json.id);",
+              "pm.test(\"situacao\",()=>pm.expect(json.situacao).to.eql(\"AGUARDANDO_PAGAMENTO\"));",
+              "pm.test(\"creditosDisponiveis\",()=>pm.expect(json.creditosDisponiveis).to.eql(0));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Primeiro pagamento: vencido",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenProfessor}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/professor/contratos/{{contrato_vencido}}/primeiro-pagamento",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"dataPagamento\": \"{{hoje}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('contrato_vencido',json.id);",
+              "pm.test(\"situacao\",()=>pm.expect(json.situacao).to.eql(\"ATIVO\"));",
+              "pm.test(\"creditosDisponiveis\",()=>pm.expect(json.creditosDisponiveis).to.eql(4));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Conferir saldo 4: vencido",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token_vencido}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/aluno/contratos"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test('Saldo 4',()=>pm.expect(json.find(c=>c.id===pm.collectionVariables.get('contrato_vencido')).creditosDisponiveis).to.eql(4));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Limites de validade da aula",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenProfessor}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/professor/aulas",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"titulo\": \"Após vencimento\",\n  \"dataHora\": \"{{aulaQuarentaDias}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 201',()=>pm.response.to.have.status(201));",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('aulaForaValidade',json.id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Não permite aula fora da validade",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token_vencido}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/aluno/checkin",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"aulaId\": \"{{aulaForaValidade}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 409',()=>pm.response.to.have.status(409));",
+              "const json = pm.response.json();",
+              "pm.test(\"mensagem contém validade\",()=>pm.expect(json.mensagem).to.include(\"validade\"));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Aluno não registra presença",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token_principal}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/professor/checkins/{{reservaLivre}}/presenca",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"status\": \"PRESENTE\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 403',()=>pm.response.to.have.status(403));",
+              "const json = pm.response.json();"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Professor não registra presença antes do início",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenProfessor}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/professor/checkins/{{reservaLivre}}/presenca",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"status\": \"PRESENTE\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 409',()=>pm.response.to.have.status(409));",
+              "const json = pm.response.json();",
+              "pm.test(\"mensagem contém não começou\",()=>pm.expect(json.mensagem).to.include(\"não começou\"));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Professor não pode ser criado sem autenticação",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/professor/professores",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"nome\": \"Novo professor\",\n  \"email\": \"{{runId}}_prof@aquarius.test\",\n  \"senha\": \"AquariusTeste123!\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 401',()=>pm.response.to.have.status(401));",
+              "const json = pm.response.json();"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Aluno não cria professor",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token_principal}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/professor/professores",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"nome\": \"Novo professor\",\n  \"email\": \"{{runId}}_prof@aquarius.test\",\n  \"senha\": \"AquariusTeste123!\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 403',()=>pm.response.to.have.status(403));",
+              "const json = pm.response.json();"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Professor autenticado cria novo professor",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenProfessor}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/professor/professores",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"nome\": \"Novo professor\",\n  \"email\": \"{{runId}}_prof@aquarius.test\",\n  \"senha\": \"AquariusTeste123!\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 201',()=>pm.response.to.have.status(201));",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('idNovoProfessor',json.id);",
+              "pm.test(\"role\",()=>pm.expect(json.role).to.eql(\"PROFESSOR\"));",
+              "pm.test('Sem senha na resposta',()=>pm.expect(json).not.to.have.property('senha'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Novo professor faz login",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/auth/login",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{runId}}_prof@aquarius.test\",\n  \"senha\": \"AquariusTeste123!\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('tokenNovoProfessor',json.token);",
+              "pm.test(\"usuario.role\",()=>pm.expect(json.usuario.role).to.eql(\"PROFESSOR\"));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Criar aula: aulaEditavel",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenProfessor}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/professor/aulas",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"titulo\": \"Teste Postman aulaEditavel\",\n  \"dataHora\": \"{{aulaFutura}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 201',()=>pm.response.to.have.status(201));",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('aulaEditavel',json.id);",
+              "pm.test(\"limiteAlunos\",()=>pm.expect(json.limiteAlunos).to.eql(8));",
+              "pm.test(\"vagasDisponiveis\",()=>pm.expect(json.vagasDisponiveis).to.eql(8));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Reservar aulaEditavel: vencido",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token_vencido}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/aluno/checkin",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"aulaId\": \"{{aulaEditavel}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 201',()=>pm.response.to.have.status(201));",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('reservaEditavel',json.id);",
+              "pm.test(\"status\",()=>pm.expect(json.status).to.eql(\"CONFIRMADO\"));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Conferir saldo 3: vencido",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token_vencido}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/aluno/contratos"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test('Saldo 3',()=>pm.expect(json.find(c=>c.id===pm.collectionVariables.get('contrato_vencido')).creditosDisponiveis).to.eql(3));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Professor edita título e horário",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenProfessor}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/professor/aulas/{{aulaEditavel}}",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"titulo\": \"Aula remarcada\",\n  \"dataHora\": \"{{aulaQuatroDias}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test(\"titulo\",()=>pm.expect(json.titulo).to.eql(\"Aula remarcada\"));",
+              "pm.test(\"cancelada\",()=>pm.expect(json.cancelada).to.eql(false));",
+              "pm.test('Mantém identificação',()=>pm.expect(json.id).to.eql(pm.collectionVariables.get('aulaEditavel')));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Reserva acompanha edição",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token_vencido}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/aluno/checkins"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test('Horário atualizado sem nova reserva',()=>{const r=json.find(x=>x.id===pm.collectionVariables.get('reservaEditavel'));pm.expect(r.titulo).to.eql('Aula remarcada');pm.expect(r.dataHora).to.eql(pm.collectionVariables.get('aulaQuatroDias'));});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Outro professor não edita a aula",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenNovoProfessor}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/professor/aulas/{{aulaEditavel}}",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"titulo\": \"Tentativa indevida\",\n  \"dataHora\": \"{{aulaQuatroDias}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 404',()=>pm.response.to.have.status(404));",
+              "const json = pm.response.json();"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Aluno não edita aula",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token_vencido}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/professor/aulas/{{aulaEditavel}}",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"titulo\": \"Tentativa indevida\",\n  \"dataHora\": \"{{aulaQuatroDias}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 403',()=>pm.response.to.have.status(403));",
+              "const json = pm.response.json();"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Remarcação não ultrapassa validade dos planos",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenProfessor}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/professor/aulas/{{aulaEditavel}}",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"titulo\": \"Muito tarde\",\n  \"dataHora\": \"{{aulaQuarentaDias}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 409',()=>pm.response.to.have.status(409));",
+              "const json = pm.response.json();",
+              "pm.test(\"mensagem contém validade\",()=>pm.expect(json.mensagem).to.include(\"validade\"));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Outro professor não cancela aula",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenNovoProfessor}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/professor/aulas/{{aulaEditavel}}/cancelar"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 404',()=>pm.response.to.have.status(404));",
+              "const json = pm.response.json();"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Aluno não cancela a aula inteira",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token_vencido}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/professor/aulas/{{aulaEditavel}}/cancelar"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 403',()=>pm.response.to.have.status(403));",
+              "const json = pm.response.json();"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Professor cancela a própria aula",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenProfessor}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/professor/aulas/{{aulaEditavel}}/cancelar",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"motivo\": \"Manutenção fictícia do espaço\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test(\"cancelada\",()=>pm.expect(json.cancelada).to.eql(true));",
+              "pm.test(\"vagasDisponiveis\",()=>pm.expect(json.vagasDisponiveis).to.eql(0));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Conferir saldo 4: vencido",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token_vencido}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/aluno/contratos"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test('Saldo 4',()=>pm.expect(json.find(c=>c.id===pm.collectionVariables.get('contrato_vencido')).creditosDisponiveis).to.eql(4));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Reserva guarda cancelamento da escola",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token_vencido}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/aluno/checkins"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test('Histórico preservado com crédito devolvido',()=>{const r=json.find(x=>x.id===pm.collectionVariables.get('reservaEditavel'));pm.expect(r.status).to.eql('CANCELADO_AULA');pm.expect(r.aulaCancelada).to.eql(true);});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Aula cancelada sai da agenda do aluno",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token_vencido}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/aluno/aulas"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test('Cancelada não aparece',()=>pm.expect(json.some(a=>a.id===pm.collectionVariables.get('aulaEditavel'))).to.eql(false));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Repetir cancelamento da escola é seguro",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenProfessor}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/professor/aulas/{{aulaEditavel}}/cancelar"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test(\"cancelada\",()=>pm.expect(json.cancelada).to.eql(true));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Conferir saldo 4: vencido",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token_vencido}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/aluno/contratos"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test('Saldo 4',()=>pm.expect(json.find(c=>c.id===pm.collectionVariables.get('contrato_vencido')).creditosDisponiveis).to.eql(4));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Aula cancelada não aceita nova reserva",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token_vencido}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/aluno/checkin",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"aulaId\": \"{{aulaEditavel}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 409',()=>pm.response.to.have.status(409));",
+              "const json = pm.response.json();",
+              "pm.test(\"mensagem contém cancelada\",()=>pm.expect(json.mensagem).to.include(\"cancelada\"));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Aula cancelada não aceita edição",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenProfessor}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/professor/aulas/{{aulaEditavel}}",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"titulo\": \"Indevida\",\n  \"dataHora\": \"{{aulaQuatroDias}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 409',()=>pm.response.to.have.status(409));",
+              "const json = pm.response.json();"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Aluno consulta cancelamento sem perder crédito de novo",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token_vencido}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/aluno/checkins/{{reservaEditavel}}/cancelar"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test(\"status\",()=>pm.expect(json.status).to.eql(\"CANCELADO_AULA\"));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Conferir saldo 4: vencido",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token_vencido}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/aluno/contratos"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test('Saldo 4',()=>pm.expect(json.find(c=>c.id===pm.collectionVariables.get('contrato_vencido')).creditosDisponiveis).to.eql(4));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Pedido de recuperação desconhecido tem resposta genérica",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/auth/recuperar-senha",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{runId}}_desconhecido@aquarius.test\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 202',()=>pm.response.to.have.status(202));",
+              "const json = pm.response.json();",
+              "pm.test('Não revela existência da conta',()=>pm.expect(json.mensagem).to.include('Se o e-mail estiver cadastrado'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Enviar link de recuperação por SMTP local",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/auth/recuperar-senha",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{runId}}_principal@aquarius.test\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 202',()=>pm.response.to.have.status(202));",
+              "const json = pm.response.json();",
+              "pm.test('Token não é devolvido na API',()=>pm.expect(json).not.to.have.property('token'));",
+              "let tentativas=0;",
+              "function consultarEmail(){pm.sendRequest({url:pm.environment.get(\"mailboxUrl\")+\"/messages?recipient=\"+encodeURIComponent(pm.collectionVariables.get(\"runId\")+\"_principal@aquarius.test\"),method:\"GET\",header:[{key:\"X-Test-Mailbox-Key\",value:pm.environment.get(\"mailboxKey\")}]},(err,res)=>{",
+              "if(!err&&res.code===200){const mensagens=res.json();const ultima=mensagens[mensagens.length-1];if(ultima?.token){pm.collectionVariables.set(\"tokenRecuperacao\",ultima.token);pm.test(\"Link recebido por SMTP local\",()=>pm.expect(ultima.token).to.match(/^[A-Za-z0-9_-]{43}$/));return;}}",
+              "if(++tentativas>=40){pm.test(\"E-mail de recuperação recebido\",()=>pm.expect.fail(\"Caixa SMTP de teste não recebeu o link\"));return;}setTimeout(consultarEmail,100);",
+              "});} consultarEmail();"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Repetir pedido imediato não gera spam",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/auth/recuperar-senha",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{runId}}_principal@aquarius.test\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 202',()=>pm.response.to.have.status(202));",
+              "const json = pm.response.json();",
+              "pm.sendRequest({url:pm.environment.get(\"mailboxUrl\")+\"/messages?recipient=\"+encodeURIComponent(pm.collectionVariables.get(\"runId\")+\"_principal@aquarius.test\"),header:[{key:\"X-Test-Mailbox-Key\",value:pm.environment.get(\"mailboxKey\")}]},(err,res)=>pm.test(\"Somente um e-mail no intervalo\",()=>{pm.expect(err).to.eql(null);pm.expect(res.json()).to.have.length(1);}));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Redefinir senha com o link recebido",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/auth/redefinir-senha",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"token\": \"{{tokenRecuperacao}}\",\n  \"novaSenha\": \"AquariusSenhaNova123!\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.test(\"mensagem contém Faça login\",()=>pm.expect(json.mensagem).to.include(\"Faça login\"));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "JWT antigo deixa de funcionar após recuperação",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token_principal}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/auth/me"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 401',()=>pm.response.to.have.status(401));",
+              "const json = pm.response.json();"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Senha anterior deixa de funcionar",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/auth/login",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{runId}}_principal@aquarius.test\",\n  \"senha\": \"AquariusTeste123!\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 401',()=>pm.response.to.have.status(401));",
+              "const json = pm.response.json();"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Login com a nova senha",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/auth/login",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{runId}}_principal@aquarius.test\",\n  \"senha\": \"AquariusSenhaNova123!\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('token_principal',json.token);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Link não pode ser reutilizado",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/auth/redefinir-senha",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"token\": \"{{tokenRecuperacao}}\",\n  \"novaSenha\": \"OutraSenha123!\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 400',()=>pm.response.to.have.status(400));",
+              "const json = pm.response.json();",
+              "pm.test(\"mensagem contém inválido\",()=>pm.expect(json.mensagem).to.include(\"inválido\"));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Troca autenticada exige senha atual correta",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenNovoProfessor}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/auth/senha",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"senhaAtual\": \"errada\",\n  \"novaSenha\": \"ProfessorNovaSenha123!\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 400',()=>pm.response.to.have.status(400));",
+              "const json = pm.response.json();"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Professor altera a própria senha",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenNovoProfessor}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/auth/senha",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"senhaAtual\": \"AquariusTeste123!\",\n  \"novaSenha\": \"ProfessorNovaSenha123!\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+              "const json = pm.response.json();"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Troca autenticada também revoga JWT antigo",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{tokenNovoProfessor}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/auth/me"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 401',()=>pm.response.to.have.status(401));",
+              "const json = pm.response.json();"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Professor entra com a nova senha",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/auth/login",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{runId}}_prof@aquarius.test\",\n  \"senha\": \"ProfessorNovaSenha123!\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200',()=>pm.response.to.have.status(200));",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('tokenNovoProfessor',json.token);"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

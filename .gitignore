@@ -37,3 +37,7 @@ build/
 .env.*
 !.env.properties.example
 src/main/resources/application-local.properties
+
+# Relatórios locais dos testes de integração
+postman/Resultado-Postman.*
+postman/Verificacao-PostgreSQL.json

@@ -2,6 +2,7 @@ package com.gestao.domain;
 
 import jakarta.persistence.*;
 import lombok.Data;
+import java.math.BigDecimal;
 import java.util.UUID;
 
 @Entity
@@ -14,6 +15,8 @@ public class Plano {
     private UUID id;
 
     private String nome; // Ex: "Mensal 3x", "Trimestral Livre"
-    private Integer limiteAulasPorSemana;
-    private Double valorPadrao;
+    private Integer aulasPorMes;
+    private Integer duracaoMeses;
+    @Column(precision = 10, scale = 2)
+    private BigDecimal valorPadrao;
 }
